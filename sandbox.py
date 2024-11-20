@@ -60,7 +60,7 @@ ansoegermail = "john.doe@example.com"
 dato = "11. november 2024"
 deskprotitel = "Ejendomssag"
 besvarelse = "Din anmodning er blevet godkendt."
-afdelingsmail = "digitalisering@aarhus.dk"
+afdelingsmail = "digitalisering@random.dk"
 afdelingstelefon = "1234 5678"
 
 # Function to replace text in runs while preserving formatting
