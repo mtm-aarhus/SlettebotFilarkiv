@@ -20,6 +20,7 @@ headers = {
 
 response = requests.request("GET", url, headers=headers)
 data = response.json()
+
 # Extracting caseNumber values
 case_numbers = [
     case["caseNumber"] for case in data[0]["cases"] 
@@ -46,9 +47,6 @@ if case_numbers:
         # Add the details to the list
         case_details.append([case, case_title, modtaget_date, aktindsigt_decision])
         
-        
-        
-            
 print(case_numbers)
 
 # Load the document
@@ -58,7 +56,7 @@ doc = Document('Document.docx')
 afdeling = "Digitalisering"
 ansoegernavn = "John Doe"
 ansoegermail = "john.doe@example.com"
-dato = "11. november 2024"
+dato = datetime.today()
 deskprotitel = "Ejendomssag"
 besvarelse = "Din anmodning er blevet godkendt."
 afdelingsmail = "digitalisering@test.dk"
