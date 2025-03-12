@@ -260,17 +260,23 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     AnsøgerNavn = queue_json.get('AnsøgerNavn')
     AnsøgerEmail = queue_json.get('AnsøgerEmail')
     Afdeling = queue_json.get('Afdeling')
-
+    
+    orchestrator_connection.log_info('Getting credentials')
     RobotCredentials = orchestrator_connection.get_credential("RobotCredentials")
     username = RobotCredentials.username
     password = RobotCredentials.password
     sharepoint_site_url = orchestrator_connection.get_constant("AktbobSharePointURL").value
     parent_folder_url = sharepoint_site_url.split(".com")[-1] +'/Delte Dokumenter/'
-
+    
+    orchestrator_connection.log_info('Getting client')
     client = sharepoint_client(username, password, sharepoint_site_url)
     results = {}
+    orchestrator_connection.log_info('Going through folder')
     traverse_and_check_folders(client, f'{parent_folder_url}Dokumentlister/{DeskproTitel}', results, orchestrator_connection)
     doc_path = r'Document.docx'
+    orchestrator_connection.log_info('Updating document')
     update_document_with_besvarelse(doc_path, results, DeskproTitel= DeskproTitel, AnsøgerEmail= AnsøgerEmail, AnsøgerNavn= AnsøgerNavn, Afdeling= Afdeling)
+    orchestrator_connection.log_info('Document updating, uploading to sharepoint')
     upload_to_sharepoint(client, DeskproTitel, r'Afgørelsesskriv.docx', folder_url = f'{parent_folder_url}Aktindsigter/{DeskproTitel}')
+    orchestrator_connection.log_info('Document uploaded to sharepoint')
 
