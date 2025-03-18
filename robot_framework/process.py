@@ -91,7 +91,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         '''
         Goes through the different folders to find the excel file (ie. the document list)
         '''
-        pattern = re.compile(r"^([A-Za-z]\d{4}-\d{6}|[A-Za-z]{3}-\d{4}-\d{6})")
+        pattern = re.compile(r"^([A-Za-z]\d{4}-\d{1,10}|[A-Za-z]{3}-\d{4}-\d{6})$")
         folder = client.web.get_folder_by_server_relative_url(folder_url)
         client.load(folder)
         client.execute_query()
