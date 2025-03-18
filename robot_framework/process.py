@@ -10,7 +10,6 @@ from office365.sharepoint.client_context import ClientContext
 from docx.shared import Pt
 from docx.shared import Inches
 from docx import Document
-from office365.sharepoint.files.creation_information import FileCreationInformation
 import json
 
 
@@ -27,32 +26,39 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         return ctx
 
     def upload_to_sharepoint(client: ClientContext, folder_name: str, file_path: str, folder_url: str):
+        """
+        Uploads a file to a specific folder in a SharePoint document library.
+
+        :param client: Authenticated SharePoint client context
+        :param folder_name: Name of the target folder within the document library
+        :param file_path: Local file path to upload
+        :param folder_url: SharePoint folder URL where the file should be uploaded
+        """
         try:
+            # Extract file name safely
+            import os
             file_name = os.path.basename(file_path)
 
+            # Define the SharePoint document library structure
             document_library = f"{folder_url.split('/', 1)[-1]}/Delte Dokumenter/Aktindsigter"
             folder_path = f"{document_library}/{folder_name}"
 
+            # Read file into memory (Prevents closed file issue)
             with open(file_path, "rb") as file:
                 file_content = file.read()  
 
+            # Get SharePoint folder reference
             target_folder = client.web.get_folder_by_server_relative_url(folder_url)
 
-            # Create file upload information with MIME type
-            file_info = FileCreationInformation(
-                url=file_name, 
-                content=file_content,
-                overwrite=True
-            )
-
-            uploaded_file = target_folder.files.add(file_info.content, file_info.url, file_info.overwrite)  
+            # Upload file using byte content
+            target_folder.upload_file(file_name, file_content)
+            
+            # Execute request
             client.execute_query()
-
-            orchestrator_connection.log_info(f"Successfully uploaded: {file_name} to {folder_path}")
+            print(f"✅ Successfully uploaded: {file_name} to {folder_path}")
 
         except Exception as e:
-            orchestrator_connection.log_info(f"Error uploading file: {str(e)}")
-
+            print(f"❌ Error uploading file: {str(e)}")
 
     def download_file_from_sharepoint(client, sharepoint_file_url):
         '''
@@ -250,12 +256,11 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         doc.save('Afgørelsesskriv.docx')
 
     queue_json = json.loads(queue_element.data)
-
     DeskproTitel = queue_json.get('Aktindsigtsovermappe')
     AnsøgerNavn = queue_json.get('AnsøgerNavn')
     AnsøgerEmail = queue_json.get('AnsøgerEmail')
     Afdeling = queue_json.get('Afdeling')
-    orchestrator_connection.log_info(f'Processing {DeskproTitel}')
+    orchestrator_connection.log_info(f'processing {DeskproTitel}')
     
     orchestrator_connection.log_info('Getting credentials')
     RobotCredentials = orchestrator_connection.get_credential("RobotCredentials")
