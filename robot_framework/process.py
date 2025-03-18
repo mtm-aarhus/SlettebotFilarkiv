@@ -47,10 +47,10 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             uploaded_file = target_folder.files.add(file_info)
             client.execute_query()
 
-            print(f"✅ Successfully uploaded: {file_name} to {folder_path}")
+            orchestrator_connection.log_info(f"Successfully uploaded: {file_name} to {folder_path}")
 
         except Exception as e:
-            print(f"❌ Error uploading file: {str(e)}")
+            orchestrator_connection.log_info(f" Error uploading file: {str(e)}")
 
     def download_file_from_sharepoint(client, sharepoint_file_url):
         '''
@@ -248,10 +248,12 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         doc.save('Afgørelsesskriv.docx')
 
     queue_json = json.loads(queue_element.data)
+
     DeskproTitel = queue_json.get('Aktindsigtsovermappe')
     AnsøgerNavn = queue_json.get('AnsøgerNavn')
     AnsøgerEmail = queue_json.get('AnsøgerEmail')
     Afdeling = queue_json.get('Afdeling')
+    orchestrator_connection.log_info(f'Processing {DeskproTitel}')
     
     orchestrator_connection.log_info('Getting credentials')
     RobotCredentials = orchestrator_connection.get_credential("RobotCredentials")
