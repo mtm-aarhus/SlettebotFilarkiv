@@ -48,10 +48,10 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             uploaded_file = target_folder.files.add(file_info.content, file_info.url, file_info.overwrite)  
             client.execute_query()
 
-            print(f"Successfully uploaded: {file_name} to {folder_path}")
+            orchestrator_connection.log_info(f"Successfully uploaded: {file_name} to {folder_path}")
 
         except Exception as e:
-            print(f"Error uploading file: {str(e)}")
+            orchestrator_connection.log_info(f"Error uploading file: {str(e)}")
 
 
     def download_file_from_sharepoint(client, sharepoint_file_url):
