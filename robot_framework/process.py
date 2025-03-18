@@ -39,18 +39,20 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             target_folder = client.web.get_folder_by_server_relative_url(folder_url)
 
             # Create file upload information with MIME type
-            file_info = FileCreationInformation()
-            file_info.content = file_content
-            file_info.url = file_name
-            file_info.overwrite = True
+            file_info = FileCreationInformation(
+                url=file_name, 
+                content=file_content,
+                overwrite=True
+            )
 
-            uploaded_file = target_folder.files.add(file_info)
+            uploaded_file = target_folder.files.add(file_info.content, file_info.url, file_info.overwrite)  
             client.execute_query()
 
-            orchestrator_connection.log_info(f"Successfully uploaded: {file_name} to {folder_path}")
+            print(f"Successfully uploaded: {file_name} to {folder_path}")
 
         except Exception as e:
-            orchestrator_connection.log_info(f" Error uploading file: {str(e)}")
+            print(f"Error uploading file: {str(e)}")
+
 
     def download_file_from_sharepoint(client, sharepoint_file_url):
         '''
