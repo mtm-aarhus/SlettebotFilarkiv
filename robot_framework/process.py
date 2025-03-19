@@ -250,10 +250,27 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                                 insert_position += 1
                 break
 
+    import os
+    from docx import Document
+
     def update_document_with_besvarelse(doc_path, case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling):
         doc = Document(doc_path)
+        
+        # Ensure changes are inserted
         insert_list_at_placeholder(doc, "[Sagstabel]", case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling)
-        doc.save('Afgørelsesskriv.docx')
+        
+        # Get the Downloads folder path
+        downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
+        
+        # Define the full path for the saved document
+        output_path = os.path.join(downloads_folder, "Afgørelsesskriv.docx")
+        
+        # Save the document
+        doc.save(output_path)
+        
+        print(f"✅ Document saved at: {output_path}")
+        return output_path  # Return full path for further processing
+
     import win32com.client
 
     def convert_docx_to_doc_and_back(file_path):
@@ -291,9 +308,10 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     traverse_and_check_folders(client, f'{parent_folder_url}Dokumentlister/{DeskproTitel}', results, orchestrator_connection)
     doc_path = r'Document.docx'
     orchestrator_connection.log_info('Updating document')
-    update_document_with_besvarelse(doc_path, results, DeskproTitel= DeskproTitel, AnsøgerEmail= AnsøgerEmail, AnsøgerNavn= AnsøgerNavn, Afdeling= Afdeling)
+    new_output_path = update_document_with_besvarelse(doc_path, results, DeskproTitel= DeskproTitel, AnsøgerEmail= AnsøgerEmail, AnsøgerNavn= AnsøgerNavn, Afdeling= Afdeling)
     orchestrator_connection.log_info('Document updating, uploading to sharepoint')
-    convert_docx_to_doc_and_back("Afgørelsesskriv.docx")
+    
+    convert_docx_to_doc_and_back(new_output_path)
     upload_to_sharepoint(client, DeskproTitel, r'Afgørelsesskriv.docx', folder_url = f'{parent_folder_url}Aktindsigter/{DeskproTitel}')
     orchestrator_connection.log_info('Document uploaded to sharepoint')
 
