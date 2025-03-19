@@ -312,6 +312,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     orchestrator_connection.log_info('Document updating, uploading to sharepoint')
     
     convert_docx_to_doc_and_back(new_output_path)
-    upload_to_sharepoint(client, DeskproTitel, r'Afgørelsesskriv.docx', folder_url = f'{parent_folder_url}Aktindsigter/{DeskproTitel}')
+    upload_to_sharepoint(client, DeskproTitel, new_output_path, folder_url = f'{parent_folder_url}Aktindsigter/{DeskproTitel}')
     orchestrator_connection.log_info('Document uploaded to sharepoint')
 
