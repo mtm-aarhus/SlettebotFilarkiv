@@ -254,10 +254,21 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         doc = Document(doc_path)
         insert_list_at_placeholder(doc, "[Sagstabel]", case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling)
         doc.save('Afgørelsesskriv.docx')
+    import win32com.client
 
-    def force_resave_docx(file_path):
-        doc = Document(file_path)
-        doc.save(file_path)  # Overwrite the file with a fresh save
+    def convert_docx_to_doc_and_back(file_path):
+        word = win32com.client.Dispatch("Word.Application")
+        word.Visible = False  # Run in the background
+
+        doc = word.Documents.Open(file_path)
+
+        temp_doc = file_path.replace(".docx", ".doc")
+        final_docx = file_path.replace(".docx", "_final.docx")
+
+        doc.SaveAs(temp_doc, FileFormat=0)  # Save as .doc (Word 97-2003)
+        doc.SaveAs(final_docx, FileFormat=16)  # Save back as .docx
+        doc.Close()
+        word.Quit()
 
     queue_json = json.loads(queue_element.data)
     DeskproTitel = queue_json.get('Aktindsigtsovermappe')
@@ -282,7 +293,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     orchestrator_connection.log_info('Updating document')
     update_document_with_besvarelse(doc_path, results, DeskproTitel= DeskproTitel, AnsøgerEmail= AnsøgerEmail, AnsøgerNavn= AnsøgerNavn, Afdeling= Afdeling)
     orchestrator_connection.log_info('Document updating, uploading to sharepoint')
-    force_resave_docx("Afgørelsesskriv.docx")
+    convert_docx_to_doc_and_back("Afgørelsesskriv.docx")
     upload_to_sharepoint(client, DeskproTitel, r'Afgørelsesskriv.docx', folder_url = f'{parent_folder_url}Aktindsigter/{DeskproTitel}')
     orchestrator_connection.log_info('Document uploaded to sharepoint')
 
