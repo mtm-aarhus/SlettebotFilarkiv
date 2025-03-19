@@ -250,42 +250,20 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                                 insert_position += 1
                 break
 
-    import os
-    from docx import Document
-
     def update_document_with_besvarelse(doc_path, case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling):
         doc = Document(doc_path)
-        
-        # Ensure changes are inserted
         insert_list_at_placeholder(doc, "[Sagstabel]", case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling)
+        doc.save('Afgørelsesskriv.docx')
         
-        # Get the Downloads folder path
-        downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
-        
-        # Define the full path for the saved document
-        output_path = os.path.join(downloads_folder, "Afgørelsesskriv.docx")
-        
-        # Save the document
-        doc.save(output_path)
-        
-        print(f"✅ Document saved at: {output_path}")
-        return output_path  # Return full path for further processing
+    import shutil
 
-    import win32com.client
-
-    def convert_docx_to_doc_and_back(file_path):
-        word = win32com.client.Dispatch("Word.Application")
-        word.Visible = False  # Run in the background
-
-        doc = word.Documents.Open(file_path)
-
-        temp_doc = file_path.replace(".docx", ".doc")
+    def unzip_and_rezip_docx(file_path):
+        folder_name = file_path.replace(".docx", "_unzipped")
         final_docx = file_path.replace(".docx", "_final.docx")
 
-        doc.SaveAs(temp_doc, FileFormat=0)  # Save as .doc (Word 97-2003)
-        doc.SaveAs(final_docx, FileFormat=16)  # Save back as .docx
-        doc.Close()
-        word.Quit()
+        shutil.unpack_archive(file_path, folder_name, "zip")  # Unzip .docx
+        shutil.make_archive(folder_name, 'zip', folder_name)  # Rezip it
+        shutil.move(folder_name + ".zip", final_docx)  # Rename back to .docx
 
     queue_json = json.loads(queue_element.data)
     DeskproTitel = queue_json.get('Aktindsigtsovermappe')
@@ -308,10 +286,9 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     traverse_and_check_folders(client, f'{parent_folder_url}Dokumentlister/{DeskproTitel}', results, orchestrator_connection)
     doc_path = r'Document.docx'
     orchestrator_connection.log_info('Updating document')
-    new_output_path = update_document_with_besvarelse(doc_path, results, DeskproTitel= DeskproTitel, AnsøgerEmail= AnsøgerEmail, AnsøgerNavn= AnsøgerNavn, Afdeling= Afdeling)
+    update_document_with_besvarelse(doc_path, results, DeskproTitel= DeskproTitel, AnsøgerEmail= AnsøgerEmail, AnsøgerNavn= AnsøgerNavn, Afdeling= Afdeling)
     orchestrator_connection.log_info('Document updating, uploading to sharepoint')
-    
-    convert_docx_to_doc_and_back(new_output_path)
-    upload_to_sharepoint(client, DeskproTitel, new_output_path, folder_url = f'{parent_folder_url}Aktindsigter/{DeskproTitel}')
+    unzip_and_rezip_docx(r'Afgørelsesskriv.docx')
+    upload_to_sharepoint(client, DeskproTitel, r'Afgørelsesskriv.docx', folder_url = f'{parent_folder_url}Aktindsigter/{DeskproTitel}')
     orchestrator_connection.log_info('Document uploaded to sharepoint')
 
