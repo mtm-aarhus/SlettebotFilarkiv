@@ -11,13 +11,16 @@ from docx.shared import Pt
 from docx.shared import Inches
 from docx import Document
 import json
+import zipfile
+import shutil
+import os
+from datetime import date
+import xml.etree.ElementTree as ET
 
 
 # pylint: disable-next=unused-argument
 def process(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | None = None) -> None:
-    """Do the primary process of the robot."""
-    orchestrator_connection.log_trace("Running process.")
-
+    """This module contains the main process of the robot."""
     def sharepoint_client(username, password, sharepoint_site_url):
         ctx = ClientContext(sharepoint_site_url).with_credentials(UserCredential(username, password))
         web = ctx.web
@@ -55,10 +58,10 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             
             # Execute request
             client.execute_query()
-            print(f"✅ Successfully uploaded: {file_name} to {folder_path}")
+            orchestrator_connection.log_info(f"✅ Successfully uploaded: {file_name} to {folder_path}")
 
         except Exception as e:
-            print(f"❌ Error uploading file: {str(e)}")
+            orchestrator_connection.log_info(f"❌ Error uploading file: {str(e)}")
 
     def download_file_from_sharepoint(client, sharepoint_file_url):
         '''
@@ -250,35 +253,181 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                                 insert_position += 1
                 break
 
+    def replace_placeholders_in_xml(docx_path: str, replacements: dict):
+        temp_dir = "temp_xml_unzip"
+        unzip_path = os.path.join(temp_dir, "unzipped")
+        os.makedirs(unzip_path, exist_ok=True)
+
+        with zipfile.ZipFile(docx_path, 'r') as zip_ref:
+            zip_ref.extractall(unzip_path)
+
+        word_folder = os.path.join(unzip_path, "word")
+        targets = [
+            f for f in os.listdir(word_folder)
+            if f.startswith(("document", "header", "footer")) and f.endswith(".xml")
+        ]
+
+        ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+
+        for filename in targets:
+            xml_path = os.path.join(word_folder, filename)
+            tree = ET.parse(xml_path)
+            root = tree.getroot()
+
+            # Gennemgå alle afsnit <w:p>
+            for para in root.findall('.//w:p', ns):
+                runs = para.findall('.//w:r', ns)
+                full_text = ""
+                text_nodes = []
+
+                for run in runs:
+                    for t in run.findall('.//w:t', ns):
+                        text_nodes.append(t)
+                        full_text += t.text if t.text else ""
+
+                replaced_text = full_text
+                for ph, val in replacements.items():
+                    replaced_text = replaced_text.replace(ph, val)
+
+                if replaced_text != full_text:
+                    # Slet eksisterende tekstindhold
+                    for t in text_nodes:
+                        t.text = ""
+
+                    # Fordel ny tekst i samme struktur
+                    remaining = replaced_text
+                    for t in text_nodes:
+                        if not remaining:
+                            break
+                        t.text = remaining[:len(remaining)]
+                        remaining = ""
+
+            tree.write(xml_path, encoding='utf-8', xml_declaration=True)
+
+        # Zip tilbage
+        new_docx_path = docx_path.replace(".docx", "_updated.docx")
+        with zipfile.ZipFile(new_docx_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for foldername, _, filenames in os.walk(unzip_path):
+                for filename in filenames:
+                    filepath = os.path.join(foldername, filename)
+                    arcname = os.path.relpath(filepath, unzip_path)
+                    zipf.write(filepath, arcname)
+
+        shutil.rmtree(temp_dir)
+        return new_docx_path
+
+    def insert_list_at_placeholder(doc, placeholder, case_details, fontsize=9):
+        full_access_cases = []
+        limited_access_cases = []
+
+        for paragraph in doc.paragraphs:
+            if placeholder in paragraph.text:
+                paragraph.clear()
+                insert_index = paragraph._element
+                parent = paragraph._element.getparent()
+                insert_position = parent.index(paragraph._element)
+
+                for case_title, documents in case_details.items():
+                    filtered_docs = [doc for doc in documents if doc['decision'] in ['Nej', 'Delvis']]
+                    if not filtered_docs:
+                        full_access_cases.append(f"• {case_title}")
+                    else:
+                        limited_access_cases.append(case_title)
+
+                if full_access_cases:
+                    p = doc.add_paragraph("Der gives fuld aktindsigt i følgende sager:")
+                    p.runs[0].bold = True
+                    parent.insert(insert_position + 1, p._element)
+                    insert_position += 1
+
+                    p = doc.add_paragraph("\n".join(full_access_cases))
+                    p.paragraph_format.left_indent = Inches(0.25)
+                    p.runs[0].font.size = Pt(fontsize)
+                    parent.insert(insert_position + 1, p._element)
+                    insert_position += 1
+
+                if limited_access_cases:
+                    p = doc.add_paragraph("\nDer gives delvis eller ingen aktindsigt i følgende sager:")
+                    p.runs[0].bold = True
+                    p.paragraph_format.space_after = Pt(5)
+                    parent.insert(insert_position + 1, p._element)
+                    insert_position += 1
+
+                    for case_title in limited_access_cases:
+                        p = doc.add_paragraph(f"• {case_title}")
+                        p.paragraph_format.left_indent = Inches(0.25)
+                        p.runs[0].font.size = Pt(fontsize)
+                        parent.insert(insert_position + 1, p._element)
+                        insert_position += 1
+
+                        filtered_docs = [doc for doc in case_details[case_title] if doc['decision'] in ['Nej', 'Delvis']]
+
+                        if len(filtered_docs) > 10:
+                            p = doc.add_paragraph("Der er mange filer i denne sag. Se aktlisten for overblik over de enkelte filer.")
+                            p.paragraph_format.left_indent = Inches(0.5)
+                            p.runs[0].font.size = Pt(fontsize)
+                            parent.insert(insert_position + 1, p._element)
+                            insert_position += 1
+                        else:
+                            for document in filtered_docs:
+                                reason_text = document['reason'] if len(str(document['reason'])) > 3 else "Ingen yderligere begrundelse"
+                                akt_id_formatted = str(document["Akt ID"]).zfill(4)
+
+                                p = doc.add_paragraph("• ")
+                                p.paragraph_format.left_indent = Inches(0.5)
+                                p.paragraph_format.space_after = Pt(0)
+
+                                p.add_run(f"{akt_id_formatted}-{document['Dok ID']}, ").font.size = Pt(fontsize)
+
+                                r = p.add_run("Aktindsigt:")
+                                r.italic = True
+                                r.font.size = Pt(fontsize)
+
+                                p.add_run(f" {document['decision']}, ").font.size = Pt(fontsize)
+
+                                r = p.add_run("Begrundelse:")
+                                r.italic = True
+                                r.font.size = Pt(fontsize)
+
+                                p.add_run(f" {reason_text}").font.size = Pt(fontsize)
+
+                                parent.insert(insert_position + 1, p._element)
+                                insert_position += 1
+                break
+
     def update_document_with_besvarelse(doc_path, case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling):
         doc = Document(doc_path)
-        insert_list_at_placeholder(doc, "[Sagstabel]", case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling)
-        doc.save('Afgørelsesskriv.docx')
-        
-    import shutil
+        insert_list_at_placeholder(doc, "[Sagstabel]", case_details)
+        temp_path = "Afgørelsesskriv.docx"
+        doc.save(temp_path)
 
-    def unzip_and_rezip_docx(file_path):
-        folder_name = file_path.replace(".docx", "_unzipped")
-        final_docx = file_path.replace(".docx", "_final.docx")
+        replacements = {
+            "[Deskprotitel]": DeskproTitel,
+            "[Ansøgernavn]": AnsøgerNavn,
+            "[Ansøgermail]": AnsøgerEmail,
+            "[Afdeling]": Afdeling,
+            "[DAGSDATO]": date.today().strftime("%d-%m-%Y"),
+        }
 
-        shutil.unpack_archive(file_path, folder_name, "zip")  # Unzip .docx
-        shutil.make_archive(folder_name, 'zip', folder_name)  # Rezip it
-        shutil.move(folder_name + ".zip", final_docx)  # Rename back to .docx
+        updated_path = replace_placeholders_in_xml(temp_path, replacements)
+        os.replace(updated_path, temp_path)
+
 
     queue_json = json.loads(queue_element.data)
     DeskproTitel = queue_json.get('Aktindsigtsovermappe')
     AnsøgerNavn = queue_json.get('AnsøgerNavn')
     AnsøgerEmail = queue_json.get('AnsøgerEmail')
     Afdeling = queue_json.get('Afdeling')
+
     orchestrator_connection.log_info(f'processing {DeskproTitel}')
-    
+
     orchestrator_connection.log_info('Getting credentials')
     RobotCredentials = orchestrator_connection.get_credential("RobotCredentials")
     username = RobotCredentials.username
     password = RobotCredentials.password
     sharepoint_site_url = orchestrator_connection.get_constant("AktbobSharePointURL").value
     parent_folder_url = sharepoint_site_url.split(".com")[-1] +'/Delte Dokumenter/'
-    
+
     orchestrator_connection.log_info('Getting client')
     client = sharepoint_client(username, password, sharepoint_site_url)
     results = {}
@@ -288,7 +437,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     orchestrator_connection.log_info('Updating document')
     update_document_with_besvarelse(doc_path, results, DeskproTitel= DeskproTitel, AnsøgerEmail= AnsøgerEmail, AnsøgerNavn= AnsøgerNavn, Afdeling= Afdeling)
     orchestrator_connection.log_info('Document updating, uploading to sharepoint')
-    unzip_and_rezip_docx(r'Afgørelsesskriv.docx')
     upload_to_sharepoint(client, DeskproTitel, r'Afgørelsesskriv.docx', folder_url = f'{parent_folder_url}Aktindsigter/{DeskproTitel}')
-    orchestrator_connection.log_info('Document uploaded to sharepoint')
+
 
