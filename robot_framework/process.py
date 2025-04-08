@@ -15,6 +15,7 @@ import zipfile
 import shutil
 import os
 from datetime import date
+import datetime
 import xml.etree.ElementTree as ET
 import AfslutSag
 import GetKmdAcessToken
@@ -408,7 +409,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             "[Ansøgermail]": AnsøgerEmail,
             "[Afdeling]": Afdeling,
             "[DAGSDATO]": date.today().strftime("%d-%m-%Y"),
-            "[Modtagelsesdato]": AktindsigtsDato
+            "[Modtagelsesdato]": datetime.strptime(AktindsigtsDato, "%Y-%m-%dT%H:%M:%SZ").strftime("%d-%m-%Y")
         }
 
         updated_path = replace_placeholders_in_xml(temp_path, replacements)
