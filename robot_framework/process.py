@@ -16,7 +16,8 @@ import shutil
 import os
 from datetime import date
 import xml.etree.ElementTree as ET
-
+import AfslutSag
+import GetKmdAcessToken
 
 # pylint: disable-next=unused-argument
 def process(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | None = None) -> None:
@@ -395,7 +396,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                                 insert_position += 1
                 break
 
-    def update_document_with_besvarelse(doc_path, case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling):
+    def update_document_with_besvarelse(doc_path, case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling, AktindsigtsDato):
         doc = Document(doc_path)
         insert_list_at_placeholder(doc, "[Sagstabel]", case_details)
         temp_path = "Afgørelsesskriv.docx"
@@ -407,6 +408,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             "[Ansøgermail]": AnsøgerEmail,
             "[Afdeling]": Afdeling,
             "[DAGSDATO]": date.today().strftime("%d-%m-%Y"),
+            "[Modtagelsesdato]": AktindsigtsDato
         }
 
         updated_path = replace_placeholders_in_xml(temp_path, replacements)
@@ -418,6 +420,10 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     AnsøgerNavn = queue_json.get('AnsøgerNavn')
     AnsøgerEmail = queue_json.get('AnsøgerEmail')
     Afdeling = queue_json.get('Afdeling')
+    DeskProID = queue_json.get('DeskProID')
+    KMDNovaURL = orchestrator_connection.get_constant("KMDNovaURL").value
+    AktindsigtsDato = queue_json.get("AktindsigtsDato")
+
 
     orchestrator_connection.log_info(f'processing {DeskproTitel}')
 
@@ -435,8 +441,9 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     traverse_and_check_folders(client, f'{parent_folder_url}Dokumentlister/{DeskproTitel}', results, orchestrator_connection)
     doc_path = r'Document.docx'
     orchestrator_connection.log_info('Updating document')
-    update_document_with_besvarelse(doc_path, results, DeskproTitel= DeskproTitel, AnsøgerEmail= AnsøgerEmail, AnsøgerNavn= AnsøgerNavn, Afdeling= Afdeling)
+    update_document_with_besvarelse(doc_path, results, DeskproTitel= DeskproTitel, AnsøgerEmail= AnsøgerEmail, AnsøgerNavn= AnsøgerNavn, Afdeling= Afdeling, AktindsigtsDato = AktindsigtsDato)
+    orchestrator_connection.log_info('Setting cases as finished in nova if novacase')
+    KMD_access_token = GetKmdAcessToken.GetKMDToken(orchestrator_connection = orchestrator_connection)
+    AfslutSag.invoke_AfslutSag(KMDNovaURL, KMD_access_token, DeskProID= DeskProID, orchestrator_connection= orchestrator_connection)
     orchestrator_connection.log_info('Document updating, uploading to sharepoint')
     upload_to_sharepoint(client, DeskproTitel, r'Afgørelsesskriv.docx', folder_url = f'{parent_folder_url}Aktindsigter/{DeskproTitel}')
-
-
