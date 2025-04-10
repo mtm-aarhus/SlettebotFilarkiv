@@ -409,7 +409,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             "[Ansøgermail]": AnsøgerEmail,
             "[Afdeling]": Afdeling,
             "[DAGSDATO]": date.today().strftime("%d-%m-%Y"),
-            "[Modtagelsesdato]": datetime.strptime(AktindsigtsDato, "%Y-%m-%dT%H:%M:%SZ").strftime("%d-%m-%Y")
+            "[Modtagelsesdato]": datetime.datetime.strptime(AktindsigtsDato, "%Y-%m-%dT%H:%M:%SZ").strftime("%d-%m-%Y")
         }
 
         updated_path = replace_placeholders_in_xml(temp_path, replacements)
