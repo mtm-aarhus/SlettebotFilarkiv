@@ -124,137 +124,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
 
             traverse_and_check_folders(client, subfolder_url, results, orchestrator_connection)
 
-    def insert_list_at_placeholder(doc, placeholder, case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling):
-        """
-        Processes the document by replacing placeholders and inserting case details.
-        """
-        fontsize = 9
-        full_access_cases = []
-        limited_access_cases = []
-        
-        def replace_text_preserve_format(paragraph, placeholders):
-            """Replaces placeholders in a paragraph while preserving formatting, ensuring all instances are replaced."""
-            full_text = "".join(run.text for run in paragraph.runs)
-            replaced_text = full_text
-            
-            for ph, replacement in placeholders.items():
-                replaced_text = replaced_text.replace(ph, replacement)
-            
-            if replaced_text != full_text:
-                paragraph.clear()
-                run = paragraph.add_run(replaced_text)
-                run.bold = paragraph.runs[0].bold
-                run.italic = paragraph.runs[0].italic
-                run.underline = paragraph.runs[0].underline
-        
-        def replace_placeholders(doc):
-            """Ensures placeholders are replaced everywhere in the document, including headers, footers, and tables."""
-            placeholders = {
-                "[Deskprotitel]": DeskproTitel,
-                "[Ansøgernavn]": AnsøgerNavn,
-                "[Ansøgermail]": AnsøgerEmail,
-                "[Afdeling]": Afdeling,
-            }
-            
-            # Replace in paragraphs
-            for paragraph in doc.paragraphs:
-                replace_text_preserve_format(paragraph, placeholders)
-            
-            # Replace in tables
-            for table in doc.tables:
-                for row in table.rows:
-                    for cell in row.cells:
-                        for paragraph in cell.paragraphs:
-                            replace_text_preserve_format(paragraph, placeholders)
-            
-            # Replace in headers and footers
-            for section in doc.sections:
-                for header_footer in [section.header, section.footer]:
-                    for paragraph in header_footer.paragraphs:
-                        replace_text_preserve_format(paragraph, placeholders)
-        
-        # Run placeholder replacement
-        replace_placeholders(doc)
-        
-        # Process case details and insert them into the document
-        for paragraph in doc.paragraphs:
-            if placeholder in paragraph.text:
-                paragraph.clear()
-                insert_index = paragraph._element
-                parent = paragraph._element.getparent()
-                insert_position = parent.index(paragraph._element)
-                
-                # Collect cases with full access
-                for case_title, documents in case_details.items():
-                    filtered_docs = [doc for doc in documents if doc['decision'] in ['Nej', 'Delvis']]
-                    if not filtered_docs:
-                        full_access_cases.append(f"• {case_title}")
-                    else:
-                        limited_access_cases.append(case_title)
-                
-                # Insert full access cases
-                if full_access_cases:
-                    full_access_paragraph = doc.add_paragraph("Der gives fuld aktindsigt i følgende sager:")
-                    full_access_paragraph.runs[0].bold = True
-                    parent.insert(insert_position + 1, full_access_paragraph._element)
-                    insert_position += 1
-                    
-                    case_list_paragraph = doc.add_paragraph("\n".join(full_access_cases))
-                    case_list_paragraph.paragraph_format.left_indent = Inches(0.25)
-                    case_list_paragraph.runs[0].font.size = Pt(fontsize)
-                    parent.insert(insert_position + 1, case_list_paragraph._element)
-                    insert_position += 1
-                
-                # Insert limited access cases
-                if limited_access_cases:
-                    limited_access_header = doc.add_paragraph("\nDer gives delvis eller ingen aktindsigt i følgende sager:")
-                    limited_access_header.runs[0].bold = True
-                    limited_access_header.paragraph_format.space_after = Pt(5)
-                    parent.insert(insert_position + 1, limited_access_header._element)
-                    insert_position += 1
-                
-                    for case_title in limited_access_cases:
-                        case_paragraph = doc.add_paragraph(f"• {case_title}")
-                        case_paragraph.paragraph_format.left_indent = Inches(0.25)
-                        case_paragraph.runs[0].font.size = Pt(fontsize)
-                        parent.insert(insert_position + 1, case_paragraph._element)
-                        insert_position += 1
-
-                        filtered_docs = [doc for doc in case_details[case_title] if doc['decision'] in ['Nej', 'Delvis']]
-                        
-                        if len(filtered_docs) > 10:
-                            warning_paragraph = doc.add_paragraph("Der er mange filer i denne sag. Se aktlisten for overblik over de enkelte filer.")
-                            warning_paragraph.paragraph_format.left_indent = Inches(0.5)
-                            warning_paragraph.runs[0].font.size = Pt(fontsize)
-                            parent.insert(insert_position + 1, warning_paragraph._element)
-                            insert_position += 1
-                        else:
-                            for document in filtered_docs:
-                                reason_text = document['reason'] if len(str(document['reason'])) > 3 else "Ingen yderligere begrundelse"
-                                akt_id_formatted = str(document["Akt ID"]).zfill(4)
-                                
-                                doc_paragraph = doc.add_paragraph("• ")
-                                doc_paragraph.paragraph_format.left_indent = Inches(0.5)
-                                doc_paragraph.paragraph_format.space_after = Pt(0)
-                                
-                                doc_paragraph.add_run(f"{akt_id_formatted}-{document['Dok ID']}, ").font.size = Pt(fontsize)
-                                
-                                aktindsigt_run = doc_paragraph.add_run("Aktindsigt:")
-                                aktindsigt_run.italic = True
-                                aktindsigt_run.font.size = Pt(fontsize)
-                                
-                                doc_paragraph.add_run(f" {document['decision']}, ").font.size = Pt(fontsize)
-                                
-                                begrundelse_run = doc_paragraph.add_run("Begrundelse:")
-                                begrundelse_run.italic = True
-                                begrundelse_run.font.size = Pt(fontsize)
-                                
-                                doc_paragraph.add_run(f" {reason_text}").font.size = Pt(fontsize)
-                                
-                                parent.insert(insert_position + 1, doc_paragraph._element)
-                                insert_position += 1
-                break
-
     def replace_placeholders_in_xml(docx_path: str, replacements: dict):
         temp_dir = "temp_xml_unzip"
         unzip_path = os.path.join(temp_dir, "unzipped")
@@ -397,9 +266,47 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                                 insert_position += 1
                 break
 
+    def insert_table_at_placeholder(doc, placeholder, case_details, fontsize=9):
+        for paragraph in doc.paragraphs:
+            if placeholder in paragraph.text:
+                paragraph.clear()
+                table_data = []
+
+                for case_title, documents in case_details.items():
+                    decisions = [doc['decision'] for doc in documents]
+
+                    if all(d == 'Ja' for d in decisions):
+                        status = "Fuld aktindsigt"
+                    elif all(d == 'Nej' for d in decisions):
+                        status = "Ingen aktindsigt"
+                    else:
+                        status = "Delvis aktindsigt"
+
+                    table_data.append((case_title, status))
+
+                table = doc.add_table(rows=1, cols=2)
+                table.style = 'Table Grid'
+
+                hdr_cells = table.rows[0].cells
+                hdr_cells[0].text = "Sagsnavn"
+                hdr_cells[1].text = "Fuld, delvis eller ingen aktindsigt"
+
+                for case_title, status in table_data:
+                    row_cells = table.add_row().cells
+                    row_cells[0].text = case_title
+                    row_cells[1].text = status
+
+                    for cell in row_cells:
+                        for paragraph in cell.paragraphs:
+                            for run in paragraph.runs:
+                                run.font.size = Pt(fontsize)
+
+                paragraph._element.addnext(table._element)
+                break
+
     def update_document_with_besvarelse(doc_path, case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling, AktindsigtsDato):
         doc = Document(doc_path)
-        insert_list_at_placeholder(doc, "[Sagstabel]", case_details)
+        insert_table_at_placeholder(doc, "[Sagstabel]", case_details)
         temp_path = "Afgørelsesskriv.docx"
         doc.save(temp_path)
 
@@ -408,7 +315,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             "[Ansøgernavn]": AnsøgerNavn,
             "[Ansøgermail]": AnsøgerEmail,
             "[Afdeling]": Afdeling,
-            "[DAGSDATO]": date.today().strftime("%d-%m-%Y"),
             "[Modtagelsesdato]": datetime.datetime.strptime(AktindsigtsDato, "%Y-%m-%dT%H:%M:%SZ").strftime("%d-%m-%Y")
         }
 
