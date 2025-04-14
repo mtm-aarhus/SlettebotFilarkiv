@@ -267,11 +267,14 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                 break
 
     def insert_table_at_placeholder(doc, placeholder, case_details, fontsize=9):
-        for paragraph in doc.paragraphs:
+        for i, paragraph in enumerate(doc.paragraphs):
             if placeholder in paragraph.text:
-                paragraph.clear()
-                table_data = []
+                # Find forælder og indsættelsesposition
+                parent = paragraph._element.getparent()
+                insert_position = parent.index(paragraph._element)
 
+                # Byg data til tabellen
+                table_data = []
                 for case_title, documents in case_details.items():
                     decisions = [doc['decision'] for doc in documents]
 
@@ -284,6 +287,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
 
                     table_data.append((case_title, status))
 
+                # Opret tabel
                 table = doc.add_table(rows=1, cols=2)
                 table.style = 'Table Grid'
 
@@ -297,12 +301,17 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                     row_cells[1].text = status
 
                     for cell in row_cells:
-                        for paragraph in cell.paragraphs:
-                            for run in paragraph.runs:
+                        for p in cell.paragraphs:
+                            for run in p.runs:
                                 run.font.size = Pt(fontsize)
 
-                paragraph._element.addnext(table._element)
+                # Indsæt tabel før vi fjerner placeholder-paragraf
+                parent.insert(insert_position, table._element)
+
+                # Fjern den gamle placeholder-paragraf
+                parent.remove(paragraph._element)
                 break
+
 
     def update_document_with_besvarelse(doc_path, case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling, AktindsigtsDato):
         doc = Document(doc_path)
