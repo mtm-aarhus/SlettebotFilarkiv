@@ -13,7 +13,6 @@ from docx import Document
 import json
 import zipfile
 import shutil
-import os
 from datetime import date
 import datetime
 import xml.etree.ElementTree as ET
@@ -22,6 +21,7 @@ import GetKmdAcessToken
 
 # pylint: disable-next=unused-argument
 def process(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | None = None) -> None:
+    print('I gang')
     """This module contains the main process of the robot."""
     def sharepoint_client(username, password, sharepoint_site_url):
         ctx = ClientContext(sharepoint_site_url).with_credentials(UserCredential(username, password))
@@ -41,7 +41,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         """
         try:
             # Extract file name safely
-            import os
             file_name = os.path.basename(file_path)
 
             # Define the SharePoint document library structure
@@ -266,52 +265,54 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                                 insert_position += 1
                 break
 
-    def insert_table_at_placeholder(doc, placeholder, case_details, fontsize=9):
-        for i, paragraph in enumerate(doc.paragraphs):
-            if placeholder in paragraph.text:
-                # Find forælder og indsættelsesposition
-                parent = paragraph._element.getparent()
-                insert_position = parent.index(paragraph._element)
+    # def insert_table_at_placeholder(doc, placeholder, case_details, fontsize=9):
+    #     print('Running insert table at placeholder')
+    #     for i, paragraph in enumerate(doc.paragraphs):
+    #         if placeholder in paragraph.text:
+    #             # Find forælder og indsættelsesposition
+    #             parent = paragraph._element.getparent()
+    #             insert_position = parent.index(paragraph._element)
 
-                # Byg data til tabellen
-                table_data = []
-                for case_title, documents in case_details.items():
-                    decisions = [doc['decision'] for doc in documents]
+    #             # Byg data til tabellen
+    #             table_data = []
+    #             for case_title, documents in case_details.items():
+    #                 decisions = [doc['decision'] for doc in documents]
 
-                    if all(d == 'Ja' for d in decisions):
-                        status = "Fuld aktindsigt"
-                    elif all(d == 'Nej' for d in decisions):
-                        status = "Ingen aktindsigt"
-                    else:
-                        status = "Delvis aktindsigt"
+    #                 if all(d == 'Ja' for d in decisions):
+    #                     status = "Fuld aktindsigt"
+    #                 elif all(d == 'Nej' for d in decisions):
+    #                     status = "Ingen aktindsigt"
+    #                 else:
+    #                     status = "Delvis aktindsigt"
 
-                    table_data.append((case_title, status))
+    #                 table_data.append((case_title, status))
 
-                # Opret tabel
-                table = doc.add_table(rows=1, cols=2)
-                table.style = 'Table Grid'
+    #             # Opret tabel
+    #             print('Making table')
+    #             table = doc.add_table(rows=1, cols=2)
+    #             table.style = 'Table Grid'
 
-                hdr_cells = table.rows[0].cells
-                hdr_cells[0].text = "Sagsnavn"
-                hdr_cells[1].text = "Fuld, delvis eller ingen aktindsigt"
+    #             hdr_cells = table.rows[0].cells
+    #             hdr_cells[0].text = "Sagsnavn"
+    #             hdr_cells[1].text = "Fuld, delvis eller ingen aktindsigt"
 
-                for case_title, status in table_data:
-                    row_cells = table.add_row().cells
-                    row_cells[0].text = case_title
-                    row_cells[1].text = status
+    #             for case_title, status in table_data:
+    #                 row_cells = table.add_row().cells
+    #                 row_cells[0].text = case_title
+    #                 row_cells[1].text = status
 
-                    for cell in row_cells:
-                        for p in cell.paragraphs:
-                            for run in p.runs:
-                                run.font.size = Pt(fontsize)
+    #                 for cell in row_cells:
+    #                     for p in cell.paragraphs:
+    #                         for run in p.runs:
+    #                             run.font.size = Pt(fontsize)
 
-                # Indsæt tabel før vi fjerner placeholder-paragraf
-                parent.insert(insert_position, table._element)
+    #             # Indsæt tabel før vi fjerner placeholder-paragraf
+    #             parent.insert(insert_position, table._element)
+    #             print('Table inserted')
 
-                # Fjern den gamle placeholder-paragraf
-                parent.remove(paragraph._element)
-                break
-
+    #             # Fjern den gamle placeholder-paragraf
+    #             parent.remove(paragraph._element)
+    #             break
 
     def update_document_with_besvarelse(doc_path, case_details, DeskproTitel, AnsøgerNavn, AnsøgerEmail, Afdeling, AktindsigtsDato):
         doc = Document(doc_path)
@@ -339,7 +340,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     DeskProID = queue_json.get('DeskProID')
     KMDNovaURL = orchestrator_connection.get_constant("KMDNovaURL").value
     AktindsigtsDato = queue_json.get("AktindsigtsDato")
-
 
     orchestrator_connection.log_info(f'processing {DeskproTitel}')
 
