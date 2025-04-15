@@ -18,6 +18,8 @@ import datetime
 import xml.etree.ElementTree as ET
 import AfslutSag
 import GetKmdAcessToken
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 # pylint: disable-next=unused-argument
 def process(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | None = None) -> None:
@@ -293,9 +295,22 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                 table.style = 'Table Grid'
 
                 hdr_cells = table.rows[0].cells
-                hdr_cells[0].text = "Sagsnavn"
-                hdr_cells[1].text = "Fuld, delvis eller ingen aktindsigt"
+                headers = ["Sagsnavn", "Fuld, delvis eller ingen aktindsigt"]
 
+                for i, text in enumerate(headers):
+                    p = hdr_cells[i].paragraphs[0]
+                    run = p.add_run(text)
+                    run.bold = True
+                    run.font.size = Pt(fontsize)
+
+                    # Tilføj grå baggrund
+                    tc = hdr_cells[i]._tc
+                    tcPr = tc.get_or_add_tcPr()
+                    shd = OxmlElement('w:shd')
+                    shd.set(qn('w:fill'), "D9D9D9")  # Lys grå
+                    tcPr.append(shd)
+
+                # Tilføj data
                 for case_title, status in table_data:
                     row_cells = table.add_row().cells
                     row_cells[0].text = case_title
@@ -305,7 +320,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                         for p in cell.paragraphs:
                             for run in p.runs:
                                 run.font.size = Pt(fontsize)
-
                 # Indsæt tabel før vi fjerner placeholder-paragraf
                 parent.insert(insert_position, table._element)
                 print('Table inserted')
