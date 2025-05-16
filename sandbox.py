@@ -1,135 +1,153 @@
-from docx import Document
-import requests
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 import os
-from requests_ntlm import HttpNtlmAuth
-import xml.etree.ElementTree as ET
-from datetime import datetime
+import pytz
+import requests
+import json
+from datetime import datetime, timedelta  # Samlet relevant datetime-import
 
-#Random deskproid
-deskproid = "2076"
+orchestrator_connection = OrchestratorConnection("Slettebot", os.getenv('OpenOrchestratorSQL'),os.getenv('OpenOrchestratorKey'), None)
+
+def GetFilarkivToken(orchestrator_connection: OrchestratorConnection):
+
+    try:
+        FilarkivTokenTimestamp = orchestrator_connection.get_constant("FilarkivTokenTimestamp1").value
+        Filarkiv_access= orchestrator_connection.get_credential("FilarkivAccessToken1")
+        Filarkiv_access_token = Filarkiv_access.password
+        Filarkiv_URL = Filarkiv_access.username
+        Filarkiv_client= orchestrator_connection.get_credential("FilarkivClientSecret")
+        client_secret = Filarkiv_client.password
+
+        # Define Danish timezone
+        danish_timezone = pytz.timezone("Europe/Copenhagen")
+
+        # Parse the old timestamp to a datetime object
+        old_time = datetime.strptime(FilarkivTokenTimestamp.strip(), "%d-%m-%Y %H:%M:%S")
+        old_time = danish_timezone.localize(old_time)  # Localize to Danish timezone
+        print('Old timestamp: ' + old_time.strftime("%d-%m-%Y %H:%M:%S"))
+
+        # Get the current timestamp in Danish timezone
+        current_time = datetime.now(danish_timezone)
+        print('current timestamp: '+current_time.strftime("%d-%m-%Y %H:%M:%S"))
+        str_current_time = current_time.strftime("%d-%m-%Y %H:%M:%S")
+
+        # Calculate the difference between the two timestamps
+        time_difference = current_time - old_time
+        print(time_difference)
+
+        # Check if the difference is over 1 hour and 30 minutes
+        GetNewTimeStamp = time_difference > timedelta(minutes=30)
+
+        # Output for the boolean
+        print("GetNewTimeStamp:", GetNewTimeStamp)
+
+        # Example of using it in an if-statement
+        if GetNewTimeStamp:
+            print("The difference is over 30 minutes. Fetch a new timestamp!")
+            # Replace these values with your actual keys
+            client_id = 'fa_de_aarhus_job_user'
+            scope = 'fa_de_api:normal'
+            grant_type = 'client_credentials'
+
+            # Data to be sent in the POST request
+            keys = {
+                'client_secret': client_secret,
+                'client_id': client_id,
+                'scope': scope,
+                'grant_type': grant_type,  # Specify the grant type you're using
+            }
+
+            try:
+                # Sending POST request to get the access token
+                response = requests.post(Filarkiv_URL, data=keys)
+                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                raise ConnectionError(f"Failed to fetch new access token: {e}")
+            
+            # Extract access token
+            Filarkiv_access_token = response.json().get('access_token')
+            if not Filarkiv_access_token:
+                raise RuntimeError("Access token not found in response.")
+
+            print("Access token granted successfully.")
+
+            # Update credentials and timestamp in the orchestrator
+            orchestrator_connection.update_credential("FilarkivAccessToken1", Filarkiv_URL, Filarkiv_access_token)
+            orchestrator_connection.update_constant("FilarkivTokenTimestamp1", current_time.strftime("%d-%m-%Y %H:%M:%S"))
+
+            return Filarkiv_access_token
+
+        else:
+            print("No need to fetch a new token. Using existing one.")
+            return Filarkiv_access_token
+
+    except Exception as e:
+        raise RuntimeError(f"An error occurred in GetFilarkivToken: {e}")
+
+def GetFileID(CaseID):
+    Filarkiv_access_token = GetFilarkivToken(orchestrator_connection)
+
+    url = f"https://core.filarkiv.dk/api/v1/Documents"
+    params = {
+        "caseid": CaseID,
+        "expand": "Files"
+    }
+    response = requests.get(url, headers={"Authorization": f"Bearer {Filarkiv_access_token}", "Content-Type": "application/json"}, params = params)
+    if response.status_code in [200, 201]:
+        print("FilID'er henter")
+    else:
+        print("Fejl i henting af fil-id'er:", response.text)
+    
+    response_json = response.json()
+    file_ids = []
+
+    for document in response_json:
+        files = document.get("files", [])
+        for file_entry in files:
+            file_id = file_entry.get("id")
+            if file_id:
+                file_ids.append(file_id)
+
+    return file_ids
+    
+def DeleteFromFilarkiv(CaseID, Filarkiv_access_token ):
+    Filarkiv_access_token = GetFilarkivToken(orchestrator_connection)
+
+    url = f"https://core.filarkiv.dk/api/v1/Cases" 
+
+    data = {
+            "id": CaseID,
+    }
+    response = requests.delete(url, headers={"Authorization": f"Bearer {Filarkiv_access_token}", "Content-Type": "application/json"}, data=json.dumps(data))
+    if response.status_code in [200, 201]:
+        print("Sagen er slettet")
+    else:
+        print("Fejl i sletning af sagen:", response.text)
 
 
-orchestrator_connection = OrchestratorConnection("AktindsigtAfgørelsesskriv", os.getenv('OpenOrchestratorSQL'),os.getenv('OpenOrchestratorKey'), None)
-aktbob_credentials = orchestrator_connection.get_credential("AktbobAPIKey")
-base_url = aktbob_credentials.username
-url = f"{base_url}/Database/Tickets?deskproId={deskproid}"
-headers = {
-  'ApiKey': aktbob_credentials.password
-}
+def PostFileIDtoEndPoint(API_params, FileIDs):
+    url = f'{API_params.username}/Jobs/QueueFilArkivFilesForDeletion'
+    key = API_params.password
+    Filarkiv_access_token = GetFilarkivToken(orchestrator_connection)
 
-response = requests.request("GET", url, headers=headers)
-data = response.json()
+    headers = {
+        "Authorization": f"Bearer {Filarkiv_access_token}", 
+        "ApiKey": key
+        }
+    payload = {
+        "files": FileIDs
+        }
+    response = requests.post(url, headers= headers, json=payload)
+    print(response.status_code)
+    if response.status_code in [200, 201, 204]:
+        print("FilID'er henter")
+    else:
+        print("Fejl i henting af fil-id'er:", response.text)
+queue_json = json.loads(queue_element.data)
+CaseID = queue_json.get('FileID')
+Token = GetFilarkivToken(orchestrator_connection)
 
-# Extracting caseNumber values
-case_numbers = [
-    case["caseNumber"] for case in data[0]["cases"] 
-    if case["sharepointFolderName"] is not None
-]
-
-if case_numbers:
-    case_details = []  # List to hold each case's details
-    go_credentials = orchestrator_connection.get_credential("GOAktApiUser")
-    API_url = orchestrator_connection.get_constant("GOApiURL").value
-    session = requests.Session()
-    session.auth = HttpNtlmAuth(go_credentials.username, go_credentials.password)
-    session.post(API_url, timeout=500)
-    for case in case_numbers:
-        response = session.get(f'{API_url}/_goapi/Cases/Metadata/{case}')
-        data = response.json()
-        metadata_xml = data["Metadata"]
-        # Parse the XML and fetch the ows_Title attribute
-        root = ET.fromstring(metadata_xml)
-        case_title = root.get("ows_Title")
-        modtaget_date = datetime.strptime(root.get("ows_Modtaget"), "%Y-%m-%d %H:%M:%S").strftime("%d-%m-%Y")
-        aktindsigt_decision = "Your Aktindsigt Decision Here"  # Customize this as needed
-
-        # Add the details to the list
-        case_details.append([case, case_title, modtaget_date, aktindsigt_decision])
-        
-print(case_numbers)
-
-# Load the document
-doc = Document('Document.docx')
-
-# Define the variables for each unique placeholder
-afdeling = "Digitalisering"
-ansoegernavn = "John Doe"
-ansoegermail = "john.doe@example.com"
-dato = datetime.today()
-deskprotitel = "Ejendomssag"
-besvarelse = "Din anmodning er blevet godkendt."
-afdelingsmail = "digitalisering@test.dk"
-afdelingstelefon = "1234 5678"
-
-# Function to replace text in runs while preserving formatting
-def replace_text_in_paragraph(paragraph, placeholder, replacement):
-    full_text = ''.join(run.text for run in paragraph.runs)
-    if placeholder in full_text:
-        # Replace the text in the full text
-        full_text = full_text.replace(placeholder, replacement)
-        
-        # Clear existing runs and split the replacement text back into new runs
-        for run in paragraph.runs:
-            run.text = ''  # Clear the text in each run
-        paragraph.runs[0].text = full_text  # Set the text in the first run
-
-def insert_table_at_placeholder(doc, placeholder, case_details):
-    for paragraph in doc.paragraphs:
-        if placeholder in paragraph.text:
-            # Clear the paragraph's text and insert the table
-            paragraph.clear()  # Clear the placeholder text
-
-            # Add a table at this location
-            table = doc.add_table(rows=1, cols=4)
-            table.style = 'Table Grid'  # Use a style of your choice
-
-            # Define the header row
-            header_cells = table.rows[0].cells
-            header_cells[0].text = "Sagsnummer"
-            header_cells[1].text = "Sagstitel"
-            header_cells[2].text = "Sagsdato"
-            header_cells[3].text = "Aktindsigt"
-
-            # Add a row for each case
-            for case_detail in case_details:
-                row_cells = table.add_row().cells
-                row_cells[0].text = case_detail[0]
-                row_cells[1].text = case_detail[1]
-                row_cells[2].text = case_detail[2]
-                row_cells[3].text = case_detail[3]
-
-            # Insert the table after clearing the placeholder
-            paragraph._element.addnext(table._element)
-            break
-
-
-insert_table_at_placeholder(doc, "[Sagstabel]", case_details)
-
-# Replace placeholders in paragraphs
-for paragraph in doc.paragraphs:
-    replace_text_in_paragraph(paragraph, '[Afdeling]', afdeling)
-    replace_text_in_paragraph(paragraph, '[Ansøgernavn]', ansoegernavn)
-    replace_text_in_paragraph(paragraph, '[Ansøgermail]', ansoegermail)
-    replace_text_in_paragraph(paragraph, '[Dato]', dato)
-    replace_text_in_paragraph(paragraph, '[Deskprotitel]', deskprotitel)
-    replace_text_in_paragraph(paragraph, '[Besvarelse]', besvarelse)
-    replace_text_in_paragraph(paragraph, '[Afdelingsmail]', afdelingsmail)
-    replace_text_in_paragraph(paragraph, '[Afdelingstelefon]', afdelingstelefon)
-
-# Replace placeholders in tables
-for table in doc.tables:
-    for row in table.rows:
-        for cell in row.cells:
-            for paragraph in cell.paragraphs:
-                replace_text_in_paragraph(paragraph, '[Afdeling]', afdeling)
-                replace_text_in_paragraph(paragraph, '[Ansøgernavn]', ansoegernavn)
-                replace_text_in_paragraph(paragraph, '[Ansøgermail]', ansoegermail)
-                replace_text_in_paragraph(paragraph, '[Dato]', dato)
-                replace_text_in_paragraph(paragraph, '[Deskprotitel]', deskprotitel)
-                replace_text_in_paragraph(paragraph, '[Besvarelse]', besvarelse)
-                replace_text_in_paragraph(paragraph, '[Afdelingsmail]', afdelingsmail)
-                replace_text_in_paragraph(paragraph, '[Afdelingstelefon]', afdelingstelefon)
-
-# Save the modified document
-doc.save('ModifiedDocument.docx')
+# 
+API_params = orchestrator_connection.get_credential('AktbobAPIKey')
+FileIDs = GetFileID('5c72decb-e2b9-4bd4-a9fb-1d29bcdf36a0')
+PostFileIDtoEndPoint(API_params, FileIDs)
+DeleteFromFilarkiv(CaseID=CaseID, Filarkiv_access_token= Token)

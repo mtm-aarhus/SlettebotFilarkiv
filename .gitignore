@@ -24,13 +24,7 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-sandbox_gpt.py
-sandbox_gpt_copy_working_version.py
 sandbox.py
-sandbox_laura.py
-Eksempel på afgørelsesskriv - februar.docx
-UpdatedDocument.docx
-ModifiedDocument.docx
 
 MANIFEST
 
