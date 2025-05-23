@@ -123,8 +123,10 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         response = requests.delete(url, headers={"Authorization": f"Bearer {Filarkiv_access_token}", "Content-Type": "application/json"}, data=json.dumps(data))
         if response.status_code in [200, 201, 204]:
             orchestrator_connection.log_info("Sagen er slettet")
+            return True
         else:
             orchestrator_connection.log_info(f'Fejl i sletning af sagen: {response.text}')
+            return False
 
     def PostFileIDtoEndPoint(API_params, FileIDs):
         url = f'{API_params.username}/Jobs/QueueFilArkivFilesForDeletion'
@@ -149,5 +151,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     Token = GetFilarkivToken(orchestrator_connection)
     API_params = orchestrator_connection.get_credential('AktbobAPIKey')
     FileIDs = GetFileID(CaseID)
-    PostFileIDtoEndPoint(API_params, FileIDs)
-    DeleteFromFilarkiv(CaseID=CaseID, Filarkiv_access_token= Token)
+    RunPost = DeleteFromFilarkiv(CaseID=CaseID, Filarkiv_access_token= Token)
+    if RunPost:
+        PostFileIDtoEndPoint(API_params, FileIDs)
