@@ -154,3 +154,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     RunPost = DeleteFromFilarkiv(CaseID=CaseID, Filarkiv_access_token= Token)
     if RunPost:
         PostFileIDtoEndPoint(API_params, FileIDs)
+        orchestrator_connection.log_info('FilIds postet til endpoint')
+    else:
+        orchestrator_connection.log_info('Sagen er ikke slettet, derfor er filider ikke postet')
