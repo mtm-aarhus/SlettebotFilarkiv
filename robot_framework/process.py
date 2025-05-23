@@ -124,7 +124,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         if response.status_code in [200, 201, 204]:
             orchestrator_connection.log_info("Sagen er slettet")
         else:
-            orchestrator_connection.log_info("Fejl i sletning af sagen:", response.text)
+            orchestrator_connection.log_info(f'Fejl i sletning af sagen: {response.text}')
 
     def PostFileIDtoEndPoint(API_params, FileIDs):
         url = f'{API_params.username}/Jobs/QueueFilArkivFilesForDeletion'
