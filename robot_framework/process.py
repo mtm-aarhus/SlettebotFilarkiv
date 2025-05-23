@@ -141,9 +141,9 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         response = requests.post(url, headers= headers, json=payload)
         orchestrator_connection.log_info(f'{response.status_code}')
         if response.status_code in [200, 201, 204]:
-            print("FilID'er henter")
+            orchestrator_connection.log_info("FilID'er henter")
         else:
-            print("Fejl i henting af fil-id'er:", response.text)
+            orchestrator_connection.log_info(f"Fejl i henting af fil-id'er: {response.text}")
     queue_json = json.loads(queue_element.data)
     CaseID = queue_json.get('FilArkivCaseId')
     Token = GetFilarkivToken(orchestrator_connection)
