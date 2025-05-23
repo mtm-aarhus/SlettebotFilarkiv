@@ -139,7 +139,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             "files": FileIDs
             }
         response = requests.post(url, headers= headers, json=payload)
-        orchestrator_connection.log_info(response.status_code)
+        orchestrator_connection.log_info(f'{response.status_code}')
         if response.status_code in [200, 201, 204]:
             print("FilID'er henter")
         else:
