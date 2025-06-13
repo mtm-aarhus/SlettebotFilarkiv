@@ -129,7 +129,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             return False
 
     def PostFileIDtoEndPoint(API_params, FileIDs):
-        url = f'{API_params.username}/Jobs/QueueFilArkivFilesForDeletion'
+        url = f'{API_params.username}/cleanup-queues/filarkiv/files'
         key = API_params.password
         Filarkiv_access_token = GetFilarkivToken(orchestrator_connection)
 
