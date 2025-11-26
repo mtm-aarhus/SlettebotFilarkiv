@@ -7,9 +7,32 @@ import pytz
 import requests
 import json
 from datetime import datetime, timedelta  # Samlet relevant datetime-import
-
+import pyodbc
 # pylint: disable-next=unused-argument
 def process(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | None = None) -> None:
+    server = orchestrator_connection.get_constant('AktbobServer').value
+    database = orchestrator_connection.get_constant('AktbobDatabase').value
+    databasebruger = orchestrator_connection.get_credential('AktbobDatabaseBruger')
+    connection_string = (
+        "Driver={ODBC Driver 17 for SQL Server};"
+        f"Server=tcp:{server}.database.windows.net,1433;"
+        f"Database={database};"
+        f"Uid={databasebruger.username};"
+        f"Pwd={databasebruger.password};"
+        "Encrypt=yes;"
+        "TrustServerCertificate=no;"
+    )
+    conn = pyodbc.connect(connection_string)
+    cursor = conn.cursor()
+
+    def mark_as_deleted(deskpro_id, cursor, conn):
+        cursor.execute("""
+            UPDATE dbo.Tickets
+            SET SlettetFilArkiv = 1
+            WHERE DeskproId = ?
+        """, deskpro_id)
+
+        conn.commit()
     def GetFilarkivToken(orchestrator_connection: OrchestratorConnection):
 
         try:
@@ -147,6 +170,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         else:
             orchestrator_connection.log_info(f"Fejl i henting af fil-id'er: {response.text}")
     queue_json = json.loads(queue_element.data)
+    deskpro_id = queue_json.get('DeskproId')
     CaseID = queue_json.get('FilArkivCaseId')
     Token = GetFilarkivToken(orchestrator_connection)
     API_params = orchestrator_connection.get_credential('AktbobAPIKey')
@@ -154,6 +178,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     RunPost = DeleteFromFilarkiv(CaseID=CaseID, Filarkiv_access_token= Token)
     if RunPost:
         PostFileIDtoEndPoint(API_params, FileIDs)
+        mark_as_deleted(deskpro_id, cursor, conn)
         orchestrator_connection.log_info('FilIds postet til endpoint')
     else:
         orchestrator_connection.log_info('Sagen er ikke slettet, derfor er filider ikke postet')
