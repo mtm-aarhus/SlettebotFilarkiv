@@ -171,7 +171,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             orchestrator_connection.log_info(f"Fejl i henting af fil-id'er: {response.text}")
     queue_json = json.loads(queue_element.data)
     deskpro_id = queue_json.get('DeskproId')
-    CaseID = queue_json.get('FilArkivCaseId')
+    CaseID = queue_json.get('FilarkivCaseId')
     Token = GetFilarkivToken(orchestrator_connection)
     API_params = orchestrator_connection.get_credential('AktbobAPIKey')
     FileIDs = GetFileID(CaseID)
